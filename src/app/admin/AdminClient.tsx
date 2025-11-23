@@ -11,7 +11,8 @@ export default function AdminClient({ token }: { token: string | null }) {
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [selectedUserUuid, setSelectedUserUuid] = useState<string | null>(null);
+  const selectedUser = users.find((u) => u.id === selectedUserId) ?? null;
+
   const [msg, setMsg] = useState("");
 
   const [isUploading, setIsUploading] = useState(false);
@@ -41,11 +42,17 @@ export default function AdminClient({ token }: { token: string | null }) {
     if (!r.ok) return setAuth("no");
     setAuth("ok");
 
-    const list = (await r.json()) as UserRow[];
+    const raw = (await r.json()) as any[];
+
+    const list: UserRow[] = raw.map((u) => ({
+      ...u,
+      id: Number(u.id), // ✅ force bigint -> number
+    }));
+
     setUsers(list);
+
     if (list[0] && selectedUserId === null) {
       setSelectedUserId(list[0].id);
-      setSelectedUserUuid(list[0].uuid);
     }
   }
 
@@ -72,7 +79,6 @@ export default function AdminClient({ token }: { token: string | null }) {
     e.currentTarget.reset();
     await loadUsers();
     setSelectedUserId(u.id);
-    setSelectedUserUuid(u.uuid);
   }
 
   async function uploadMedia(e: any) {
@@ -358,9 +364,7 @@ export default function AdminClient({ token }: { token: string | null }) {
             value={selectedUserId ?? ""}
             onChange={(e) => {
               const id = Number(e.target.value);
-              const u = users.find((x) => x.id === id);
               setSelectedUserId(id);
-              setSelectedUserUuid(u?.uuid ?? null);
             }}
           >
             {users.map((u) => (
@@ -370,11 +374,11 @@ export default function AdminClient({ token }: { token: string | null }) {
             ))}
           </select>
 
-          {selectedUserUuid && (
+          {selectedUser && (
             <div className="notice">
-              UUID : <code>{selectedUserUuid}</code>
+              UUID : <code>{selectedUser.uuid}</code>
               <div className="sub" style={{ marginTop: 6 }}>
-                URL NFC : /play?u={selectedUserUuid}
+                URL NFC : /play?u={selectedUser.uuid}
               </div>
             </div>
           )}
