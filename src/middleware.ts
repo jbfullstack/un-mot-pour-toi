@@ -8,12 +8,13 @@ export function middleware(req: NextRequest) {
 
   if (!isAdminPath) return NextResponse.next();
 
-  const token = req.nextUrl.searchParams.get("t");
-  if (token && token === process.env.ADMIN_TOKEN) {
+  const token = (req.nextUrl.searchParams.get("t") || "").trim();
+  const envToken = (process.env.ADMIN_TOKEN || "").trim();
+
+  if (token && token === envToken) {
     return NextResponse.next();
   }
 
-  // pas de token -> 404 (discret)
   return new NextResponse("Not found", { status: 404 });
 }
 

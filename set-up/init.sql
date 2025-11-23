@@ -33,3 +33,21 @@ CREATE TABLE daily_pick (
 
 CREATE INDEX idx_media_user_random ON media(user_id, is_random, random_used);
 CREATE INDEX idx_media_date_date ON media_date(play_date);
+
+INSERT INTO app_user(uuid, display_name)
+VALUES (gen_random_uuid(), 'default');
+
+-- 1) rendre audio optionnel
+ALTER TABLE media
+ALTER COLUMN audio_url DROP NOT NULL;
+
+-- 2) garantir qu’il y a AU MOINS un média (audio OU image OU video)
+ALTER TABLE media
+ADD CONSTRAINT media_has_content
+CHECK (
+  audio_url IS NOT NULL
+  OR image_url IS NOT NULL
+  OR video_url IS NOT NULL
+);
+
+
