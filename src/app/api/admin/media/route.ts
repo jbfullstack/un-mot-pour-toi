@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
   }
 
   const title = (formData.get("title") as string) || null;
-  const isRandom = formData.get("is_random") === "on";
+  const rawRandom = formData.get("is_random");
+  const isRandom = rawRandom === "true" || rawRandom === "on";
 
   const audioFile = formData.get("audio") as File | null;
   const imageFile = formData.get("image") as File | null;

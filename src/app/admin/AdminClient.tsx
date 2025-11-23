@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DayPicker } from "react-day-picker";
+import { upload } from "@vercel/blob/client";
 
 type UserRow = { id: number; display_name: string; uuid: string };
 
@@ -102,10 +103,31 @@ export default function AdminClient({ token }: { token: string | null }) {
       fd.set("is_random", isRandom ? "true" : "false");
       fd.set("dates", dates.map(formatParisDate).join(","));
 
+      // === SI VIDEO GROSSE : upload direct blob ===
+      const videoFile = fd.get("video") as File | null;
+
+      if (videoFile && videoFile.size > 4.5 * 1024 * 1024) {
+        const blob = await upload(videoFile.name, videoFile, {
+          access: "public",
+          handleUploadUrl: "/api/blob-upload",
+        });
+
+        fd.delete("video"); // on évite de repasser le fichier à la function
+        fd.set("video_url", blob.url); // on envoie juste l’URL
+      }
+
       const r = await fetch(`/api/admin/media?t=${token}`, {
         method: "POST",
         body: fd,
       });
+
+      if (!r.ok) {
+        const txt = await r.text();
+        setUploadOk(false);
+        setMsg(`Upload refusé (${r.status}) : ${txt.slice(0, 200)}`);
+        return;
+      }
+
       const m = await r.json();
       if (m.error) {
         setUploadOk(false);
