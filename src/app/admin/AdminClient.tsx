@@ -13,6 +13,13 @@ export default function AdminClient({ token }: { token: string | null }) {
   const [selectedUserUuid, setSelectedUserUuid] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadOk, setUploadOk] = useState<null | boolean>(null);
+
+  const [audioName, setAudioName] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
+  const [videoName, setVideoName] = useState<string | null>(null);
+
   // calendrier multi-dates
   const [dates, setDates] = useState<Date[]>([]);
 
@@ -69,36 +76,67 @@ export default function AdminClient({ token }: { token: string | null }) {
 
   async function uploadMedia(e: any) {
     e.preventDefault();
+    if (isUploading) return; // garde anti double-clic
+
     if (!token) return setMsg("Token admin absent.");
     if (!selectedUserId) return setMsg("Choisis un user d'abord.");
 
-    const fd = new FormData(e.currentTarget);
-    fd.set("user_id", String(selectedUserId));
-    fd.set("is_random", fd.get("is_random") ? "true" : "false");
+    const formEl = e.currentTarget as HTMLFormElement;
+    const fd = new FormData(formEl);
 
-    // dates -> CSV compatible backend
-    fd.set("dates", dates.map(formatParisDate).join(","));
+    const isRandom = fd.get("is_random") ? true : false;
 
-    const r = await fetch(`/api/admin/media?t=${token}`, {
-      method: "POST",
-      body: fd,
-    });
-    const m = await r.json();
-    if (m.error) return setMsg(m.error);
-
-    const rawDates = dates.map(formatParisDate).join(",").trim();
-    if (rawDates) {
-      const arr = rawDates.split(",").map((s) => s.trim());
-      await fetch(`/api/admin/media-dates?t=${token}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ media_id: m.id, dates: arr }),
-      });
+    // ✅ règle métier: au moins une date OU random
+    if (!isRandom && dates.length === 0) {
+      return setMsg(
+        "Il faut soit sélectionner au moins une date, soit cocher Random."
+      );
     }
 
-    setMsg(`Media créé id=${m.id}`);
-    e.currentTarget.reset();
-    setDates([]);
+    setMsg("");
+    setUploadOk(null);
+    setIsUploading(true);
+
+    try {
+      fd.set("user_id", String(selectedUserId));
+      fd.set("is_random", isRandom ? "true" : "false");
+      fd.set("dates", dates.map(formatParisDate).join(","));
+
+      const r = await fetch(`/api/admin/media?t=${token}`, {
+        method: "POST",
+        body: fd,
+      });
+      const m = await r.json();
+      if (m.error) {
+        setUploadOk(false);
+        setMsg(m.error);
+        return;
+      }
+
+      const rawDates = dates.map(formatParisDate).join(",").trim();
+      if (rawDates) {
+        const arr = rawDates.split(",").map((s) => s.trim());
+        await fetch(`/api/admin/media-dates?t=${token}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ media_id: m.id, dates: arr }),
+        });
+      }
+
+      setUploadOk(true);
+      setMsg(`✅ Media créé id=${m.id}`);
+
+      formEl.reset();
+      setDates([]);
+      setAudioName(null);
+      setImageName(null);
+      setVideoName(null);
+    } catch (err: any) {
+      setUploadOk(false);
+      setMsg(`Erreur upload: ${String(err)}`);
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   if (auth !== "ok") return null;
@@ -332,14 +370,30 @@ export default function AdminClient({ token }: { token: string | null }) {
 
         <section className="card">
           <h2>Uploader un média</h2>
+
           <form onSubmit={uploadMedia} style={{ display: "grid", gap: 10 }}>
             <input name="title" type="text" placeholder="Titre (optionnel)" />
 
+            {/* AUDIO */}
             <div style={{ display: "grid", gap: 6 }}>
               <label>Audio (optionnel)</label>
-              <input type="file" name="audio" accept="audio/*" capture />
+              <input
+                type="file"
+                name="audio"
+                accept="audio/*"
+                capture
+                onChange={(e) =>
+                  setAudioName(e.currentTarget.files?.[0]?.name ?? null)
+                }
+              />
+              {audioName && <div className="sub">🎧 {audioName}</div>}
+              <div className="sub">
+                Sur téléphone : tu peux enregistrer un son OU choisir un fichier
+                existant.
+              </div>
             </div>
 
+            {/* IMAGE */}
             <div style={{ display: "grid", gap: 6 }}>
               <label>Image (optionnel)</label>
               <input
@@ -347,9 +401,18 @@ export default function AdminClient({ token }: { token: string | null }) {
                 name="image"
                 accept="image/*"
                 capture="environment"
+                onChange={(e) =>
+                  setImageName(e.currentTarget.files?.[0]?.name ?? null)
+                }
               />
+              {imageName && <div className="sub">🖼️ {imageName}</div>}
+              <div className="sub">
+                Sur téléphone : tu peux prendre une photo OU choisir une image
+                existante.
+              </div>
             </div>
 
+            {/* VIDEO fichier */}
             <div style={{ display: "grid", gap: 6 }}>
               <label>Vidéo fichier (optionnel)</label>
               <input
@@ -357,15 +420,24 @@ export default function AdminClient({ token }: { token: string | null }) {
                 name="video"
                 accept="video/*"
                 capture="environment"
+                onChange={(e) =>
+                  setVideoName(e.currentTarget.files?.[0]?.name ?? null)
+                }
               />
+              {videoName && <div className="sub">🎬 {videoName}</div>}
+              <div className="sub">
+                Sur téléphone : tu peux filmer OU choisir une vidéo existante.
+              </div>
             </div>
 
+            {/* VIDEO url youtube */}
             <input
               name="video_url"
               type="text"
               placeholder="URL embed YouTube (optionnel)"
             />
 
+            {/* CALENDRIER */}
             <label>Dates (optionnel)</label>
             <div
               style={{
@@ -386,62 +458,6 @@ export default function AdminClient({ token }: { token: string | null }) {
                 captionLayout="dropdown"
                 fromYear={2020}
                 toYear={2035}
-                // styles inline robustes (dark + boutons visibles + selection visible)
-                styles={{
-                  caption: {
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    color: "white",
-                  },
-                  caption_label: { color: "white", fontWeight: 600 },
-
-                  nav: { display: "flex", gap: 6 },
-                  nav_button: {
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    border: "1px solid #2a2a33",
-                    backgroundColor: "#151518",
-                    color: "white",
-                    cursor: "pointer",
-                  },
-
-                  dropdown: {
-                    backgroundColor: "#151518",
-                    color: "white",
-                    border: "1px solid #2a2a33",
-                    borderRadius: 8,
-                    padding: "4px 6px",
-                    fontSize: 14,
-                  },
-
-                  head_cell: {
-                    color: "#b9b9c5",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  },
-
-                  cell: { padding: 0 },
-                  day: {
-                    width: 36,
-                    height: 36,
-                    margin: 2,
-                    borderRadius: 8,
-                    color: "white",
-                    backgroundColor: "transparent",
-                  },
-                  day_today: { border: "1px solid #2b7cff" },
-                  day_outside: { color: "#6b6b75", opacity: 0.6 },
-
-                  // ceci marche vraiment pour "selected" en v9
-                  day_selected: {
-                    backgroundColor: "#2b7cff",
-                    color: "white",
-                    fontWeight: 700,
-                    outline: "2px solid rgba(43,124,255,0.45)",
-                  },
-                }}
               />
             </div>
 
@@ -450,18 +466,41 @@ export default function AdminClient({ token }: { token: string | null }) {
                 Sélectionnées : {dates.map(formatParisDate).join(", ")}
               </div>
             )}
+
             <input
               type="hidden"
               name="dates"
               value={dates.map(formatParisDate).join(",")}
             />
 
+            {/* RANDOM */}
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input type="checkbox" name="is_random" />
               Random ?
             </label>
 
-            <button className="btn dark full">Upload</button>
+            {/* GUARD UX */}
+            {dates.length === 0 && (
+              <div className="sub">
+                ⚠️ Si aucune date n’est sélectionnée, pense à cocher Random.
+              </div>
+            )}
+
+            {/* SUBMIT */}
+            <button className="btn dark full" disabled={isUploading}>
+              {isUploading ? "Upload en cours..." : "Upload"}
+            </button>
+
+            {uploadOk === true && (
+              <div className="sub" style={{ color: "#7CFF9E" }}>
+                ✅ Upload terminé
+              </div>
+            )}
+            {uploadOk === false && (
+              <div className="sub" style={{ color: "#FF7C7C" }}>
+                ❌ Upload échoué
+              </div>
+            )}
           </form>
         </section>
       </div>
