@@ -25,6 +25,15 @@ export default function AdminClient({ token }: { token: string | null }) {
   // calendrier multi-dates
   const [dates, setDates] = useState<Date[]>([]);
 
+  // dates déjà utilisées (désactivées)
+  const [disabledDates, setDisabledDates] = useState<Date[]>([]);
+
+  // mois affiché dans le calendrier
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+
+  // checkbox random cochée par défaut
+  const [isRandomChecked, setIsRandomChecked] = useState(true);
+
   function formatParisDate(date: Date) {
     const fmt = new Intl.DateTimeFormat("fr-CA", {
       timeZone: "Europe/Paris",
@@ -56,10 +65,41 @@ export default function AdminClient({ token }: { token: string | null }) {
     }
   }
 
+  async function loadExistingDates() {
+    if (!token || !selectedUserId) return;
+
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth() + 1;
+
+    const r = await fetch(
+      `/api/admin/media-dates?t=${token}&user_id=${selectedUserId}&year=${year}&month=${month}`,
+      { cache: "no-store" }
+    );
+
+    if (!r.ok) return;
+
+    const data = (await r.json()) as { dates: string[] };
+
+    // Parser les dates correctement pour react-day-picker
+    const parsedDates = data.dates.map((d) => {
+      // Format attendu: "YYYY-MM-DD"
+      const [year, month, day] = d.split("-").map(Number);
+      // Créer une date en UTC pour éviter les problèmes de timezone
+      return new Date(year, month - 1, day);
+    });
+
+    setDisabledDates(parsedDates);
+  }
+
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    loadExistingDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId, currentMonth, token]);
 
   async function addUser(e: any) {
     e.preventDefault();
@@ -91,10 +131,8 @@ export default function AdminClient({ token }: { token: string | null }) {
     const formEl = e.currentTarget as HTMLFormElement;
     const fd = new FormData(formEl);
 
-    const isRandom = fd.get("is_random") ? true : false;
-
     // ✅ règle métier: au moins une date OU random
-    if (!isRandom && dates.length === 0) {
+    if (!isRandomChecked && dates.length === 0) {
       return setMsg(
         "Il faut soit sélectionner au moins une date, soit cocher Random."
       );
@@ -106,7 +144,7 @@ export default function AdminClient({ token }: { token: string | null }) {
 
     try {
       fd.set("user_id", String(selectedUserId));
-      fd.set("is_random", isRandom ? "true" : "false");
+      fd.set("is_random", isRandomChecked ? "true" : "false");
       fd.set("dates", dates.map(formatParisDate).join(","));
 
       // === SI VIDEO GROSSE : upload direct blob ===
@@ -159,6 +197,10 @@ export default function AdminClient({ token }: { token: string | null }) {
       setAudioName(null);
       setImageName(null);
       setVideoName(null);
+      setIsRandomChecked(true);
+
+      // Recharger les dates existantes pour afficher les nouvelles dates comme désactivées
+      await loadExistingDates();
     } catch (err: any) {
       setUploadOk(false);
       setMsg(`Erreur upload: ${String(err)}`);
@@ -347,6 +389,48 @@ export default function AdminClient({ token }: { token: string | null }) {
         :global(.rdp-dark .rdp-day:hover) {
           background: #202028;
         }
+
+        /* ✅ Style pour les dates désactivées (événements existants) */
+        :global(.rdp-dark .rdp-day_disabled),
+        :global(.rdp-dark button.rdp-day_disabled),
+        :global(.rdp-dark button[disabled].rdp-day) {
+          background: #3d1f1f !important;
+          color: #ff6b6b !important;
+          opacity: 1 !important;
+          cursor: not-allowed !important;
+          position: relative;
+        }
+
+        :global(.rdp-dark .rdp-day_disabled:hover),
+        :global(.rdp-dark button.rdp-day_disabled:hover),
+        :global(.rdp-dark button[disabled].rdp-day:hover) {
+          background: #4d2525 !important;
+        }
+
+        /* Ajouter un emoji interdit avec un pseudo-élément */
+        :global(.rdp-dark .rdp-day_disabled::before),
+        :global(.rdp-dark button.rdp-day_disabled::before),
+        :global(.rdp-dark button[disabled].rdp-day::before) {
+          content: "🚫";
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          font-size: 10px;
+        }
+
+        /* Style pour le modificateur personnalisé alreadyUsed */
+        :global(.rdp-dark .rdp-day.alreadyUsed) {
+          position: relative;
+        }
+
+        :global(.rdp-dark .rdp-day.alreadyUsed::after) {
+          content: "🚫";
+          position: absolute;
+          top: 1px;
+          right: 1px;
+          font-size: 12px;
+          line-height: 1;
+        }
       `}</style>
 
       <div className="wrap">
@@ -478,7 +562,40 @@ export default function AdminClient({ token }: { token: string | null }) {
                 className="rdp-dark"
                 mode="multiple"
                 selected={dates}
-                onSelect={(arr) => setDates(arr ?? [])}
+                onSelect={(arr) => {
+                  const newDates = arr ?? [];
+                  setDates(newDates);
+
+                  // Si l'utilisateur sélectionne au moins une date, décocher random
+                  if (newDates.length > 0) {
+                    setIsRandomChecked(false);
+                  } else {
+                    // Si toutes les dates sont décochées, recocher random
+                    setIsRandomChecked(true);
+                  }
+                }}
+                disabled={(day) => {
+                  // Vérifier si cette date est dans la liste des dates désactivées
+                  return disabledDates.some((disabledDate) => {
+                    return (
+                      disabledDate.getFullYear() === day.getFullYear() &&
+                      disabledDate.getMonth() === day.getMonth() &&
+                      disabledDate.getDate() === day.getDate()
+                    );
+                  });
+                }}
+                modifiers={{
+                  alreadyUsed: disabledDates,
+                }}
+                modifiersStyles={{
+                  alreadyUsed: {
+                    background: "#3d1f1f",
+                    color: "#ff6b6b",
+                    fontWeight: "bold",
+                    border: "2px solid #ff6b6b",
+                  },
+                }}
+                onMonthChange={(month) => setCurrentMonth(month)}
                 weekStartsOn={1}
                 showOutsideDays
                 captionLayout="dropdown"
@@ -501,7 +618,12 @@ export default function AdminClient({ token }: { token: string | null }) {
 
             {/* RANDOM */}
             <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="checkbox" name="is_random" />
+              <input
+                type="checkbox"
+                name="is_random"
+                checked={isRandomChecked}
+                onChange={(e) => setIsRandomChecked(e.target.checked)}
+              />
               Random ?
             </label>
 
