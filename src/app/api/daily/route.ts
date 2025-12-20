@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, pool } from "@/lib/db";
 import { todayFranceDateString } from "@/lib/date-fr";
 
+export const dynamic = 'force-dynamic';
+
 async function resolveUserId(uuid?: string | null) {
   if (!uuid) return null;
   const r = await sql<{ id: number }>(

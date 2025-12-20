@@ -3,6 +3,8 @@ import { sql } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth-admin";
 import { randomUUID } from "crypto";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   if (!assertAdmin(req)) {
     return new NextResponse("Not found", { status: 404 });

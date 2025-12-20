@@ -3,6 +3,8 @@ import { put } from "@vercel/blob";
 import { sql } from "@/lib/db";
 import { assertAdmin } from "@/lib/auth-admin";
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   if (!assertAdmin(req)) {
     return new NextResponse("Not found", { status: 404 });
