@@ -11,7 +11,7 @@
   "dependencies": {
     "@vercel/blob": "^0.27.3",
     "@vercel/postgres": "^0.10.0",
-    "next": "15.0.3",
+    "next": "15.0.7",
     "react": "^18.3.1",
     "react-day-picker": "^9.11.1",
     "react-dom": "^18.3.1"
